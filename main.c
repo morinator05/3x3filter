@@ -21,7 +21,7 @@ typedef struct {
 
 typedef struct  {
     int kernel[9];
-    float multiplier;
+    int devisor;
 }Filter;
 
 Filter extractFilter (char** argv) {
@@ -29,10 +29,16 @@ Filter extractFilter (char** argv) {
     Filter f;
     switch (filter_num) {
         case FILTER_SMOOTH:
-            f = (Filter) {{1, 1, 1, 1, 1, 1, 1, 1, 1}, 1/9};
+            f = (Filter) {{1, 1, 1, 1, 1, 1, 1, 1, 1}, 9};
             break;
         case FILTER_SHARP:
-            f = (Filter) {};
+            f = (Filter) {{0, -1, 0, -1, 5, -1, 0, -1, 0}, 1};
+            break;
+        case FILTER_EDGE:
+            //TODO
+            break;
+        case FILTER_EMBOSS:
+            f = (Filter) {{2, 1, 0, 1, 1, -1, 0, -1, -2}, 1};
             break;
         default:
             printf("Error: Invalid filter\n");
@@ -142,26 +148,24 @@ int main(int argc, char** argv) {
 
             unsigned int sum_b = 0, sum_g = 0, sum_r = 0;
 
-            for (int offset_line = -1; offset_line <= 1; offset_line++) {
-                for (int offset_row = -1; offset_row <= 1; offset_row++) {
+            for (int offset_line = -1, filter_pos = 0; offset_line <= 1; offset_line++) {
+                for (int offset_row = -1; offset_row <= 1; offset_row++, filter_pos++) {
                     int old_idx = old_k + (offset_row * total_bytes_per_row) + (offset_line * bytes_per_pixel);
 
-                    //TODO: multiply each value by its factor defined somewhere else
-                    sum_b += pixel_data[old_idx];
-                    sum_g += pixel_data[old_idx + 1];
-                    sum_r += pixel_data[old_idx + 2];
+                    //adjust the weighted sum with the correct filter value
+                    printf("%d", filter.kernel[filter_pos]);
+                    sum_b += (pixel_data[old_idx] * filter.kernel[filter_pos]);
+                    sum_g += (pixel_data[old_idx + 1] * filter.kernel[filter_pos]);
+                    sum_r += (pixel_data[old_idx + 2] * filter.kernel[filter_pos]);
                 }
             }
-
-            //TODO
-            sum_b /= 9;
-            sum_g /= 9;
-            sum_r /= 9;
+            sum_b /= filter.devisor;
+            sum_g /= filter.devisor;
+            sum_r /= filter.devisor;
 
             new_pixel_data[k] = (unsigned char) sum_b;
             new_pixel_data[k + 1] = (unsigned char)  sum_g;
             new_pixel_data[k + 2] = (unsigned char)  sum_r;
-
         }
     }
 
