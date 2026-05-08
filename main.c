@@ -12,6 +12,39 @@
 #define BMP_HEADER_SIZE 54
 #define FILE_HEADER_SIZE 14
 
+typedef struct {
+    uint32_t image_size;
+    int32_t width;
+    int32_t height;
+    uint16_t bit_depth;
+}Header;
+
+typedef struct  {
+    int kernel[9];
+    float multiplier;
+}Filter;
+
+Filter extractFilter (char** argv) {
+    const int8_t filter_num = atoi(argv[2]);
+    Filter f;
+    switch (filter_num) {
+        case FILTER_SMOOTH:
+            f = (Filter) {{1, 1, 1, 1, 1, 1, 1, 1, 1}, 1/9};
+            break;
+        case FILTER_SHARP:
+            f = (Filter) {};
+            break;
+        default:
+            printf("Error: Invalid filter\n");
+            exit(EXIT_FAILURE);
+    }
+    return f;
+}
+
+void applyFilter() {
+
+}
+
 int main(int argc, char** argv) {
 
     if (argc != 3) {
@@ -19,11 +52,7 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    //check filter
-    int8_t filter = atoi(argv[2]);
-    if (filter < 0 || filter > 3) {
-        printf("Error: Invalid filter");
-    }
+    Filter filter = extractFilter(argv);
 
     //open file
     char* filename = argv[1];
@@ -158,4 +187,5 @@ int main(int argc, char** argv) {
 
     return EXIT_SUCCESS;
 }
+
 
