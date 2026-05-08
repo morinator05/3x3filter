@@ -143,17 +143,17 @@ int main(int argc, char** argv)
 
     int new_width = old_header.width - 2;
     int new_height = old_header.height - 2;
-    int new_pixel_row = new_width * bytes_per_pixel;
-    int new_total_row = (new_pixel_row + 3) & ~3;
-    int new_padding_size = new_total_row - new_pixel_row;
-    int new_image_size = new_height * new_total_row;
+    int new_pixel_bytes_per_row = new_width * bytes_per_pixel;
+    int new_total_bytes_row = (new_pixel_bytes_per_row + 3) & ~3;
+    int new_padding_size = new_total_bytes_row - new_pixel_bytes_per_row;
+    int new_image_size = new_height * new_total_bytes_row;
 
     unsigned char* new_pixel_data = (unsigned char*)malloc(new_image_size);
 
     //Apply filter
     for (int i = 0; i < new_height; i++)
     {
-        int new_offset = i * (new_pixel_row + new_padding_size);
+        int new_offset = i * (new_pixel_bytes_per_row + new_padding_size);
         int old_offset = (i + 1) * (pixel_bytes_per_row + padding_size);
         for (int j = 0; j < new_width; j++)
         {
