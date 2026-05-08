@@ -41,27 +41,16 @@ Filter extractFilter (char** argv) {
     return f;
 }
 
-void applyFilter() {
-
-}
-
-int main(int argc, char** argv) {
-
-    if (argc != 3) {
-        printf("Usage: %s [filter] [filename]\n", argv[0]);
-        exit(EXIT_FAILURE);
-    }
-
-    Filter filter = extractFilter(argv);
-
-    //open file
-    char* filename = argv[1];
-    int fd = open(filename, O_RDWR);
+int openFile(const char* filename) {
+    const int fd = open(filename, O_RDWR);
     if (fd < 0) {
         printf("Error: Failed to open file\n");
         exit(EXIT_FAILURE);
     }
+    return fd;
+}
 
+Header readBitmapHeader(int fd) {
     unsigned char bmp_header[BMP_HEADER_SIZE];
 
     // Read the bitmap header
@@ -78,22 +67,43 @@ int main(int argc, char** argv) {
         exit(EXIT_FAILURE);
     }
 
-    // Get the image size, width, height and bit depth
-    uint32_t image_size = *(uint32_t*) &bmp_header[2];
-    int32_t width = *(int32_t*) &bmp_header[18];
-    int32_t height = *(int32_t*) &bmp_header[22];
-    uint16_t bit_depth =  *(uint16_t*) &bmp_header[28];
+    Header bitmap_header;
 
-    if (width < 3 || height < 3) {
+    bitmap_header.image_size = *(uint32_t*) &bmp_header[2];
+    bitmap_header.width = *(int32_t*) &bmp_header[18];
+    bitmap_header.height = *(int32_t*) &bmp_header[22];
+    bitmap_header.bit_depth =  *(uint16_t*) &bmp_header[28];
+
+    if (bitmap_header.width < 3 || bitmap_header.height < 3) {
         printf("Error: Bitmap width and height must both be >= 3\n");
         exit(EXIT_FAILURE);
     }
 
+    return bitmap_header;
+}
+
+void applyFilter() {
+
+}
+
+int main(int argc, char** argv) {
+
+    if (argc != 3) {
+        printf("Usage: %s [filter] [filename]\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    Filter filter = extractFilter(argv);
+
+    const int fd = openFile(argv[1]);
+
+    Header old_header = readBitmapHeader(fd);
+
     // Print the image size, width, height and bit depth for debugging purposes
-    printf( "width: %i, height: %i, size: %i\n", width, height, image_size);
+    printf( "width: %i, height: %i, size: %i\n", old_header.width, old_header.height, old_header.image_size);
 
     // Allocate memory for the pixel data
-    unsigned char* pixel_data = (unsigned char*) malloc(image_size - BMP_HEADER_SIZE);
+    unsigned char* pixel_data = (unsigned char*) malloc(old_header.image_size - BMP_HEADER_SIZE);
     // If the memory allocation fails, exit the program
     if (pixel_data == NULL) {
         printf("Error: Failed to allocate memory for pixel data\n");
@@ -101,19 +111,19 @@ int main(int argc, char** argv) {
     }
 
     // Read the pixel data
-    bytes_read = read(fd, pixel_data, image_size - BMP_HEADER_SIZE);
-    if (bytes_read != image_size - BMP_HEADER_SIZE) {
+    ssize_t bytes_read = read(fd, pixel_data, old_header.image_size - BMP_HEADER_SIZE);
+    if (bytes_read != old_header.image_size - BMP_HEADER_SIZE) {
         printf("Error: Failed to read pixel data\n");
         exit(EXIT_FAILURE);
     }
 
-    int bytes_per_pixel = bit_depth / 8;
-    int pixel_bytes_per_row = width * bytes_per_pixel;
+    int bytes_per_pixel = old_header.bit_depth / 8;
+    int pixel_bytes_per_row = old_header.width * bytes_per_pixel;
     int total_bytes_per_row = (pixel_bytes_per_row + 3) & ~3;
     int padding_size = total_bytes_per_row - pixel_bytes_per_row;
 
-    int new_width = width - 2;
-    int new_height = height - 2;
+    int new_width = old_header.width - 2;
+    int new_height = old_header.height - 2;
     int new_pixel_row = new_width * bytes_per_pixel;
     int new_total_row = (new_pixel_row + 3) & ~3;
     int new_padding_size = new_total_row - new_pixel_row;
