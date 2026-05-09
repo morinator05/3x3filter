@@ -32,7 +32,7 @@ typedef struct {
 } Props;
 
 Filter extractFilter(char **argv) {
-    const int8_t filter_num = atoi(argv[2]);
+    const int filter_num = atoi(argv[2]);
     Filter f;
     switch (filter_num) {
         case FILTER_SMOOTH:
@@ -63,11 +63,11 @@ int openFile(const char *filename) {
     return fd;
 }
 
-Header readBitmapHeader(int fd) {
+Header readBitmapHeader(const int fd) {
     unsigned char bmp_header[BMP_HEADER_SIZE];
 
     // Read the bitmap header
-    ssize_t bytes_read = read(fd, bmp_header, BMP_HEADER_SIZE);
+    const ssize_t bytes_read = read(fd, bmp_header, BMP_HEADER_SIZE);
     // If there are less bytes read, then the file is not a valid bitmap file
     if (bytes_read != BMP_HEADER_SIZE) {
         printf("Error: Invalid bitmap header\n");
@@ -95,7 +95,7 @@ Header readBitmapHeader(int fd) {
     return bitmap_header;
 }
 
-unsigned char *readPixelDataFromHeader(int fd, Header header) {
+unsigned char *readPixelDataFromHeader(const int fd, const Header header) {
     // Allocate memory for the pixel data
     unsigned char *pixel_data = (unsigned char *) malloc(header.image_size - BMP_HEADER_SIZE);
     // If the memory allocation fails, exit the program
@@ -105,7 +105,7 @@ unsigned char *readPixelDataFromHeader(int fd, Header header) {
     }
 
     // Read the pixel data
-    ssize_t bytes_read = read(fd, pixel_data, header.image_size - BMP_HEADER_SIZE);
+    const ssize_t bytes_read = read(fd, pixel_data, header.image_size - BMP_HEADER_SIZE);
     if (bytes_read != header.image_size - BMP_HEADER_SIZE) {
         printf("Error: Failed to read pixel data\n");
         exit(EXIT_FAILURE);
@@ -113,7 +113,7 @@ unsigned char *readPixelDataFromHeader(int fd, Header header) {
     return pixel_data;
 }
 
-Props setProps(Header header, int bytes_per_pixel) {
+Props setProps(const Header header, const int bytes_per_pixel) {
     Props props;
     props.pixel_bytes_per_row = header.width * bytes_per_pixel;
     props.total_bytes_per_row = (props.pixel_bytes_per_row + 3) & ~3;
@@ -121,7 +121,7 @@ Props setProps(Header header, int bytes_per_pixel) {
     return props;
 }
 
-unsigned char limitNumber(int number) {
+unsigned char limitNumber(const int number) {
     if (number > 255) {
         return 255;
     }
@@ -131,8 +131,9 @@ unsigned char limitNumber(int number) {
     return number;
 }
 
-unsigned char *applyFilter(Filter filter, Header new_header, unsigned char *pixel_data, Props original_props,
-                           Props new_props, int bytes_per_pixel) {
+unsigned char *applyFilter(const Filter filter, const Header new_header, const unsigned char *pixel_data,
+                           const Props original_props,
+                           const Props new_props, const int bytes_per_pixel) {
     unsigned char *new_pixel_data = (unsigned char *) malloc(new_header.image_size);
 
     for (int i = 0; i < new_header.height; i++) {
