@@ -170,7 +170,7 @@ unsigned char *applyFilter(const Filter filter, const PackedFileHeader new_heade
 int main(const int argc, char **argv) {
     //Check if argc is right
     if (argc != 3) {
-        printf("Usage: %s [filter] [filename]\n", argv[0]);
+        printf("Usage: %s [filename] [filter]\n", argv[0]);
         exit(EXIT_FAILURE);
     }
 
