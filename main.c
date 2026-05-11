@@ -184,9 +184,15 @@ int main(const int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    //Read the original header and make a copy for the new file
+    //Read the original header and check if it is a BM file
     PackedFileHeader header;
     read(fd_old, &header, sizeof(PackedFileHeader));
+    if (header.signature != 0x4D42) {
+        printf("Error: not a bitmap file\n");
+        exit(EXIT_FAILURE);
+    }
+
+    //Make a copy of the header for the new file
     PackedFileHeader new_header;
     memcpy(&new_header, &header, sizeof(PackedFileHeader));
 
