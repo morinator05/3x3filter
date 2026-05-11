@@ -184,11 +184,15 @@ int main(const int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    //Read the original header and check if it is a BM file
+    //Read the original header and check if it is a BM file, check if image is large enough
     PackedFileHeader header;
     read(fd_old, &header, sizeof(PackedFileHeader));
     if (header.signature != 0x4D42) {
         printf("Error: not a bitmap file\n");
+        exit(EXIT_FAILURE);
+    }
+    if (header.width < 3 || header.height < 3) {
+        printf("Error: image width and height must be at least 3px");
         exit(EXIT_FAILURE);
     }
 
