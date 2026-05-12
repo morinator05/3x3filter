@@ -12,7 +12,7 @@
 #define FILTER_OUTLINE 4
 
 #define BMP_HEADER_SIZE 54
-
+#define BIT_DEPTH_DEVIDER 8
 #define FILE_NAME_OUTPUT "filtered_image.bmp"
 
 //struct for the file/bitmap header, packed so it can be written to a file without alignment
@@ -49,6 +49,7 @@ typedef struct {
     int pixel_bytes_per_row;
     int total_bytes_per_row;
     int padding_size;
+    int bytes_per_pixel;
 } Props;
 
 //determine a Filter by the argument given
@@ -86,32 +87,23 @@ Filter extractFilter(char **argv) {
     return f;
 }
 
-unsigned char *readPixelDataFromHeader(const int fd, const PackedFileHeader header) {
+void readPixelDataFromHeader(unsigned char *pixel_data_ptr, const int fd, const PackedFileHeader header) {
     //Place the data offset
     lseek(fd, header.data_offset, SEEK_SET);
 
-    // Allocate memory for the pixel data
-    unsigned char *pixel_data = (unsigned char *) malloc(header.image_size);
-
-    // If the memory allocation fails, exit the program
-    if (pixel_data == NULL) {
-        printf("Error: Failed to allocate memory for pixel data\n");
-        exit(EXIT_FAILURE);
-    }
-
     // Read the pixel data
-    const ssize_t bytes_read = read(fd, pixel_data, header.image_size);
+    const ssize_t bytes_read = read(fd, pixel_data_ptr, header.image_size);
     if (bytes_read != header.image_size) {
         printf("Error: Failed to read pixel data\n");
         exit(EXIT_FAILURE);
     }
-    return pixel_data;
 }
 
 //Calculate the byte level properties for the rows of the image
-Props calculateProps(const PackedFileHeader header, const int bytes_per_pixel) {
+Props calculateProps(const PackedFileHeader header) {
     Props p;
-    p.pixel_bytes_per_row = header.width * bytes_per_pixel;
+    p.bytes_per_pixel = header.bit_depth / BIT_DEPTH_DEVIDER;
+    p.pixel_bytes_per_row = header.width * p.bytes_per_pixel;
     p.total_bytes_per_row = (p.pixel_bytes_per_row + 3) & ~3;
     p.padding_size = p.total_bytes_per_row - p.pixel_bytes_per_row;
     return p;
@@ -124,21 +116,29 @@ unsigned char limitNumber(const int number) {
     return number;
 }
 
+//Allocates a ptr for the pixeldata for a given bm header
+unsigned char *mallocPixelData(const PackedFileHeader h) {
+    unsigned char *ptr = malloc(h.image_size);
+    if (ptr == NULL) {
+        printf("Error: Failed to allocate memory for pixel data\n");
+        exit(EXIT_FAILURE);
+    }
+    return ptr;
+}
 
-unsigned char *applyFilter(const Filter filter, const PackedFileHeader new_header, const unsigned char *pixel_data,
-                           const Props original_props,
-                           const Props new_props, const int bytes_per_pixel) {
-    unsigned char *new_pixel_data = malloc(new_header.image_size);
-
-    for (int i = 0; i < new_header.height; i++) {
+void applyFilter(unsigned char *pixel_data_new, const unsigned char *pixel_data_original, const Filter filter,
+                 const PackedFileHeader header_new,
+                 const Props props_original,
+                 const Props props_new) {
+    for (int i = 0; i < header_new.height; i++) {
         //Calculate the row offset for the old and new image
-        int new_offset = i * (new_props.pixel_bytes_per_row + new_props.padding_size);
-        int old_offset = (i + 1) * (original_props.pixel_bytes_per_row + original_props.padding_size);
+        int new_offset = i * (props_new.pixel_bytes_per_row + props_new.padding_size);
+        int old_offset = (i + 1) * (props_original.pixel_bytes_per_row + props_original.padding_size);
 
-        for (int j = 0; j < new_header.width; j++) {
+        for (int j = 0; j < header_new.width; j++) {
             //Calculate the current pixel position in the line for the old and the new (smaller) image
-            int k = new_offset + bytes_per_pixel * j;
-            int old_k = old_offset + bytes_per_pixel * (j + 1);
+            int k = new_offset + props_new.bytes_per_pixel * j;
+            int old_k = old_offset + props_original.bytes_per_pixel * (j + 1);
 
             //Reset the sum for each new pixel
             int sum_b = 0, sum_g = 0, sum_r = 0;
@@ -146,26 +146,24 @@ unsigned char *applyFilter(const Filter filter, const PackedFileHeader new_heade
             //Loop through the nine surrounding pixels and calculate the weighted sum
             for (int offset_y = -1, filter_pos = 0; offset_y <= 1; offset_y++) {
                 for (int offset_x = -1; offset_x <= 1; offset_x++, filter_pos++) {
-
-                    int old_idx = old_k + (offset_y * original_props.total_bytes_per_row) + (
-                                      offset_x * bytes_per_pixel);
+                    int old_idx = old_k + (offset_y * props_original.total_bytes_per_row) + (
+                                      offset_x * props_original.bytes_per_pixel);
 
                     //Adjust the sum with the weighted filter value
-                    sum_b += (pixel_data[old_idx] * filter.kernel[filter_pos]);
-                    sum_g += (pixel_data[old_idx + 1] * filter.kernel[filter_pos]);
-                    sum_r += (pixel_data[old_idx + 2] * filter.kernel[filter_pos]);
+                    sum_b += (pixel_data_original[old_idx] * filter.kernel[filter_pos]);
+                    sum_g += (pixel_data_original[old_idx + 1] * filter.kernel[filter_pos]);
+                    sum_r += (pixel_data_original[old_idx + 2] * filter.kernel[filter_pos]);
                 }
             }
             sum_b /= filter.divisor;
             sum_g /= filter.divisor;
             sum_r /= filter.divisor;
 
-            new_pixel_data[k] = limitNumber(sum_b);
-            new_pixel_data[k + 1] = limitNumber(sum_g);
-            new_pixel_data[k + 2] = limitNumber(sum_r);
+            pixel_data_new[k] = limitNumber(sum_b);
+            pixel_data_new[k + 1] = limitNumber(sum_g);
+            pixel_data_new[k + 2] = limitNumber(sum_r);
         }
     }
-    return new_pixel_data;
 }
 
 int main(const int argc, char **argv) {
@@ -179,86 +177,85 @@ int main(const int argc, char **argv) {
     const Filter filter = extractFilter(argv);
 
     //Open the original file
-    const int fd_old = open(argv[1], O_RDWR);
-    if (fd_old < 0) {
+    const int fd_original = open(argv[1], O_RDWR);
+    if (fd_original < 0) {
         printf("Error: Failed to open file\n");
         exit(EXIT_FAILURE);
     }
 
     //Read the original header and check if it is a BM file, check if image is large enough
-    PackedFileHeader header;
-    read(fd_old, &header, sizeof(PackedFileHeader));
-    if (header.signature != 0x4D42) {
+    PackedFileHeader header_original;
+    read(fd_original, &header_original, sizeof(PackedFileHeader));
+    if (header_original.signature != 0x4D42) {
         printf("Error: not a bitmap file\n");
         exit(EXIT_FAILURE);
     }
-    if (header.width < 3 || header.height < 3) {
+    if (header_original.width < 3 || header_original.height < 3) {
         printf("Error: image width and height must be at least 3px");
         exit(EXIT_FAILURE);
     }
 
     //Make a copy of the header for the new file
-    PackedFileHeader new_header;
-    memcpy(&new_header, &header, sizeof(PackedFileHeader));
+    PackedFileHeader header_new;
+    memcpy(&header_new, &header_original, sizeof(PackedFileHeader));
 
     //Reduce the image dimensions of the new image, the borders are not calculated
-    new_header.width = header.width - 2;
-    new_header.height = header.height - 2;
+    header_new.width = header_original.width - 2;
+    header_new.height = header_original.height - 2;
 
     //Calculate the byte level properties of the rows
-    const int bytes_per_pixel = header.bit_depth / 8;
-    const Props original_props = calculateProps(header, bytes_per_pixel);
-    const Props new_props = calculateProps(new_header, bytes_per_pixel);
+    const Props props_original = calculateProps(header_original);
+    const Props props_new = calculateProps(header_new);
 
     //Update the new header
-    new_header.image_size = new_header.height * new_props.total_bytes_per_row;
-    new_header.file_size = new_header.image_size + new_header.data_offset;
+    header_new.image_size = header_new.height * props_new.total_bytes_per_row;
+    header_new.file_size = header_new.image_size + header_new.data_offset;
 
     // Print the image size, width, height and bit depth for debugging purposes
-    printf("OLD: width: %i, height: %i, size: %i\n", header.width, header.height, header.image_size);
-    printf("NEW: width: %i, height: %i, size: %i\n", new_header.width, new_header.height, new_header.image_size);
+    printf("OLD: width: %i, height: %i, size: %i\n", header_original.width, header_original.height, header_original.image_size);
+    printf("NEW: width: %i, height: %i, size: %i\n", header_new.width, header_new.height, header_new.image_size);
 
-    //Read the original pixel data
-    unsigned char *old_pixel_data = readPixelDataFromHeader(fd_old, header);
+    // Allocate memory for the pixel data and read it
+    unsigned char *pixel_data_original = mallocPixelData(header_original);
+    unsigned char *pixel_data_new = mallocPixelData(header_new);
+    readPixelDataFromHeader(pixel_data_original, fd_original, header_original);
 
-    //Calculate the new pixel data
-    unsigned char *new_pixel_data = applyFilter(filter, new_header, old_pixel_data, original_props, new_props,
-                                                bytes_per_pixel);
+    //apply the filter by calculating the new pixel data
+    applyFilter(pixel_data_new, pixel_data_original, filter, header_new, props_original, props_new);
 
     //Open a new file for the program output
     int fd_new = open(FILE_NAME_OUTPUT, O_CREAT | O_RDWR, 0644);
     if (fd_new < 0) {
         printf("Error: Failed to open output file\n");
-        free(old_pixel_data);
-        free(new_pixel_data);
+        free(pixel_data_original);
+        free(pixel_data_new);
         exit(EXIT_FAILURE);
     }
 
     //Write the file header
-    size_t bytes_written = write(fd_new, &new_header, BMP_HEADER_SIZE);
+    size_t bytes_written = write(fd_new, &header_new, BMP_HEADER_SIZE);
     if (bytes_written != BMP_HEADER_SIZE) {
         printf("Error: Failed to write header to output file\n");
-        free(old_pixel_data);
-        free(new_pixel_data);
+        free(pixel_data_original);
+        free(pixel_data_new);
         exit(EXIT_FAILURE);
     }
 
-
-    bytes_written = write(fd_new, new_pixel_data, new_header.image_size);
-    if (bytes_written != new_header.image_size) {
+    bytes_written = write(fd_new, pixel_data_new, header_new.image_size);
+    if (bytes_written != header_new.image_size) {
         printf("Error: Failed to write pixel-data to output file\n");
-        free(old_pixel_data);
-        free(new_pixel_data);
+        free(pixel_data_original);
+        free(pixel_data_new);
         exit(EXIT_FAILURE);
     }
 
     // Close the bitmap files
     close(fd_new);
-    close(fd_old);
+    close(fd_original);
 
     // Free memory
-    free(old_pixel_data);
-    free(new_pixel_data);
+    free(pixel_data_original);
+    free(pixel_data_new);
 
     return EXIT_SUCCESS;
 }
