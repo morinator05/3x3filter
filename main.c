@@ -144,10 +144,13 @@ unsigned char *applyFilter(const Filter filter, const PackedFileHeader new_heade
             int sum_b = 0, sum_g = 0, sum_r = 0;
 
             //Loop through the nine surrounding pixels and calculate the weighted sum
-            for (int offset_line = -1, filter_pos = 0; offset_line <= 1; offset_line++) {
-                for (int offset_row = -1; offset_row <= 1; offset_row++, filter_pos++) {
-                    int old_idx = old_k + (offset_row * original_props.total_bytes_per_row) + (
-                                      offset_line * bytes_per_pixel);
+            for (int offset_y = -1; offset_y <= 1; offset_y++) {
+                for (int offset_x = -1; offset_x <= 1; offset_x++) {
+
+                    int filter_pos = (offset_y + 1) * 3 + (offset_x + 1);
+
+                    int old_idx = old_k + (offset_y * original_props.total_bytes_per_row) + (
+                                      offset_x * bytes_per_pixel);
 
                     //Adjust the sum with the weighted filter value
                     sum_b += (pixel_data[old_idx] * filter.kernel[filter_pos]);
